@@ -1,0 +1,1262 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.nn.parallel
+
+nz = 128
+nc = 3
+
+
+
+
+class pre_conv(nn.Module):
+    def __init__(self):
+        super(pre_conv, self).__init__()
+        self.nf = 64
+        G_type = 1
+
+        if G_type == 1:
+            # ipdb.set_trace()
+            self.pre_conv = nn.Sequential(
+                nn.Conv2d(nz, self.nf * 2, 3, 1, 1, bias=False),   # torch.Size([50, 128, 1, 1])
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),   # torch.Size([50, 128, 2, 2])
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True)
+            )
+        elif G_type == 2:
+            self.pre_conv = nn.Sequential(
+                nn.Conv2d(self.nf * 8, self.nf * 8, 3, 1, round((self.shape[0] - 1) / 2), bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.ReLU(True),  # added
+                nn.Conv2d(self.nf * 8, self.nf * 8, 3, 1, round((self.shape[0] - 1) / 2), bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.nf * 8, self.nf * 4, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 4),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.nf * 4, self.nf * 2, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.nf * 2, self.nf, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.nf, self.shape[0], 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.shape[0]),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.shape[0], self.shape[0], 3, 1, 1, bias=False),
+
+                nn.Sigmoid()
+            )
+
+    def forward(self, input):
+        output = self.pre_conv(input)
+        return output
+
+
+class Generator(nn.Module):
+    def __init__(self):
+        super(Generator, self).__init__()
+        self.nf = 64
+        self.num_class = 10
+        G_type = 1
+        if G_type == 1:
+            self.main = nn.Sequential(
+                nn.Conv2d(self.nf * 2, self.nf * 4, 3, 1, 0, bias=False),
+                nn.BatchNorm2d(self.nf * 4),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(self.nf * 4, self.nf * 8, 3, 1, 0, bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(self.nf * 8, self.nf * 4, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 4),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(self.nf * 4, self.nf * 2, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(self.nf * 2, self.nf, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(self.nf, nc, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(nc),
+                nn.LeakyReLU(0.2, inplace=True),
+
+                nn.Conv2d(nc, nc, 3, 1, 1, bias=False),
+                nn.Sigmoid()
+            )
+        elif G_type == 2:
+            self.main = nn.Sequential(
+                nn.Conv2d(nz, self.nf * 2, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 2, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 2),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(self.nf * 2, self.nf * 4, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 4),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(self.nf * 4, self.nf * 4, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 4),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(self.nf * 4, self.nf * 8, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(self.nf * 8, self.nf * 8, 4, 2, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.ReLU(True),
+
+                nn.Conv2d(self.nf * 8, self.nf * 8, 3, 1, 1, bias=False),
+                nn.BatchNorm2d(self.nf * 8),
+                nn.ReLU(True)
+            )
+
+    def forward(self, input):
+        output = self.main(input)
+        return output
+
+class Generator_2_only(nn.Module):
+    def __init__(self, nz=100, ngf=64, img_size=32, nc=3,num_class=10):
+        super(Generator_2_only, self).__init__()
+
+        self.init_size = img_size // 4
+        self.l1 = nn.Sequential(nn.Linear(nz, ngf * 2 * self.init_size ** 2))
+
+        self.conv_blocks = nn.Sequential(
+            nn.BatchNorm2d(ngf * 2),
+            nn.Upsample(scale_factor=2),
+
+            nn.Conv2d(ngf * 2, ngf * 2, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Upsample(scale_factor=2),
+
+            nn.Conv2d(ngf * 2, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, z):
+        out = self.l1(z)
+        out = out.view(out.shape[0], -1, self.init_size, self.init_size)
+        img = self.conv_blocks(out)
+        return img
+
+class Lable_Control(nn.Module):
+    def __init__(self, label_size, latent_size, ngf):
+        super(Lable_Control, self).__init__()
+        self.eb1_1 = nn.Linear(label_size, ngf * 2)
+        self.bn1_1 = nn.BatchNorm1d(ngf * 2)
+        self.eb1_2 = nn.Linear(ngf * 2, ngf)
+        self.bn1_2 = nn.BatchNorm1d(ngf)
+
+        self.ngf = ngf
+
+    def forward(self, label):
+        eb1_1 = self.bn1_1(self.eb1_1(label))
+        eb1_2 = self.bn1_2(self.eb1_2(F.tanh(eb1_1)))
+
+        return eb1_1, eb1_2
+
+class Generator_2_Lable_Control(nn.Module):
+    def __init__(self, nz=100, ngf=64, img_size=32, nc=3, num_class=10):
+        super(Generator_2_Lable_Control, self).__init__()
+
+        self.init_size = img_size // 4
+        self.l1 = nn.Sequential(nn.Linear(nz, ngf * 2 * self.init_size ** 2))
+
+        self.conv_blocks1 = nn.Sequential(
+            nn.BatchNorm2d(ngf * 2),
+            nn.Upsample(scale_factor=2),
+        )
+        self.conv_blocks2 = nn.Sequential(
+            nn.Conv2d(ngf * 2, ngf * 2, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+        )
+
+        self.lk_relu = nn.LeakyReLU(0.2, inplace=True)
+        self.conv_blocks3 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf * 2, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+        )
+            # nn.LeakyReLU(0.2, inplace=True),
+        self.out = nn.Sequential(
+            nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+        self.encoder = Lable_Control(num_class, nz, ngf)
+
+    def forward(self, z,label):
+        out_eb1, out_eb2 = self.encoder(label)
+        out = self.l1(z)
+        out = out.view(out.shape[0], -1, self.init_size, self.init_size)
+        x1 = self.conv_blocks1(out)
+
+        x2 = self.conv_blocks2(x1)
+        n, c, _, _ = x2.shape
+        x2 = self.lk_relu((out_eb1.view(n,c,1,1)*x2))
+
+        x3 = self.conv_blocks3(x2)
+        n, c, _, _ = x3.shape
+        x3 = self.lk_relu((out_eb2.view(n,c,1,1)*x3))
+
+        img = self.out(x3)
+        return img, out_eb1, out_eb2
+
+
+class Lable_encoder(nn.Module):
+    def __init__(self, label_size, latent_size, ngf):
+        super(Lable_encoder, self).__init__()
+        self.eb1_1 = nn.Linear(label_size, ngf * 2)
+        self.bn1_1 = nn.BatchNorm1d(ngf * 2)
+        self.eb1_2 = nn.Linear(ngf * 2, ngf)
+        self.bn1_2 = nn.BatchNorm1d(ngf)
+
+        self.ngf = ngf
+        self.eb2_1 = nn.Linear(latent_size, ngf * 2)
+        self.bn2_1 = nn.BatchNorm1d(ngf * 2)
+        self.eb2_2 = nn.Linear(ngf * 2, ngf)
+        self.bn2_2 = nn.BatchNorm1d(ngf)
+
+    def forward(self, label, lable_z):
+        eb1_1 = self.bn1_1(self.eb1_1(label))
+        eb1_2 = self.bn1_2(self.eb1_2(F.tanh(eb1_1)))
+
+        eb2_1 = self.bn2_1(self.eb2_1(lable_z))
+        eb2_2 = self.bn2_2(self.eb2_2(F.tanh(eb2_1)))
+
+        out_eb1 = eb1_1.unsqueeze(2) * eb2_1.unsqueeze(1)
+        out_eb2 = eb1_2.unsqueeze(2) * eb2_2.unsqueeze(1)
+        return out_eb1, out_eb2
+
+class Generator_2(nn.Module):
+    def __init__(self, nz=100, ngf=64, img_size=32, nc=3, num_class=10):
+        super(Generator_2, self).__init__()
+
+        self.init_size = img_size // 4
+        self.l1 = nn.Sequential(nn.Linear(nz, ngf * 2 * self.init_size ** 2))
+
+        self.conv_blocks1 = nn.Sequential(
+            nn.BatchNorm2d(ngf * 2),
+            nn.Upsample(scale_factor=2),
+        )
+        self.conv_blocks2 = nn.Sequential(
+            nn.Conv2d(ngf * 2, ngf * 2, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+        )
+
+        self.lk_relu = nn.LeakyReLU(0.2, inplace=True)
+        self.conv_blocks3 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf * 2, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+        )
+            # nn.LeakyReLU(0.2, inplace=True),
+        self.out = nn.Sequential(
+            nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+        self.encoder = Lable_encoder(num_class, nz, ngf)
+
+    def forward(self, z,label,label_z):
+        out_eb1, out_eb2 = self.encoder(label,label_z)
+        out = self.l1(z)
+        out = out.view(out.shape[0], -1, self.init_size, self.init_size)
+        x1 = self.conv_blocks1(out)
+
+        x2 = self.conv_blocks2(x1)
+        n, c, _, _ = x2.shape
+        x2 = self.lk_relu((out_eb1@x2.view(n,c,-1)).view(*(x2.shape)))
+
+        x3 = self.conv_blocks3(x2)
+        n, c, _, _ = x3.shape
+        x3 = self.lk_relu((out_eb2@x3.view(n,c,-1)).view(*(x3.shape)))
+
+        img = self.out(x3)
+        return img, out_eb1, out_eb2
+
+
+
+
+class Lable_encoder_M(nn.Module):
+    def __init__(self, label_size, latent_size, ngf):
+        super(Lable_encoder_M, self).__init__()
+        self.eb1_1 = nn.Linear(label_size, ngf * 4)
+        self.bn1_1 = nn.BatchNorm1d(ngf * 4)
+        self.eb1_2 = nn.Linear(ngf * 4, ngf*2)
+        self.bn1_2 = nn.BatchNorm1d(ngf*2)
+        self.eb1_3 = nn.Linear(ngf * 2, ngf)
+        self.bn1_3 = nn.BatchNorm1d(ngf)
+
+
+        self.eb2_1 = nn.Linear(latent_size, ngf * 4)
+        self.bn2_1 = nn.BatchNorm1d(ngf * 4)
+        self.eb2_2 = nn.Linear(ngf * 4, ngf*2)
+        self.bn2_2 = nn.BatchNorm1d(ngf*2)
+        self.eb2_3 = nn.Linear(ngf * 2, ngf)
+        self.bn2_3 = nn.BatchNorm1d(ngf)
+
+        self.ngf = ngf
+
+    def forward(self, label, lable_z):
+        eb1_1 = self.bn1_1(self.eb1_1(label))
+        eb1_2 = self.bn1_2(self.eb1_2(F.tanh(eb1_1)))
+        eb1_3 = self.bn1_3(self.eb1_3(F.tanh(eb1_2)))
+
+
+        eb2_1 = self.bn2_1(self.eb2_1(lable_z))
+        eb2_2 = self.bn2_2(self.eb2_2(F.tanh(eb2_1)))
+        eb2_3 = self.bn2_3(self.eb2_3(F.tanh(eb2_2)))
+
+
+        out_eb1 = eb1_1.unsqueeze(2) * eb2_1.unsqueeze(1)
+        out_eb2 = eb1_2.unsqueeze(2) * eb2_2.unsqueeze(1)
+        out_eb3 = eb1_3.unsqueeze(2) * eb2_3.unsqueeze(1)
+
+
+        return out_eb1, out_eb2, out_eb3
+
+class TinyImageNetGenerator(nn.Module):
+    def __init__(self, nz=100, ngf=64, img_size=64, nc=3, num_class=10):
+        super(TinyImageNetGenerator, self).__init__()
+
+        self.init_size = img_size // 8
+        self.l1 = nn.Sequential(nn.Linear(nz, ngf * 8 * self.init_size ** 2))
+
+        self.conv_blocks = nn.Sequential(
+            nn.BatchNorm2d(ngf * 8),
+
+        )
+
+        self.conv_blocks1 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf * 8, ngf * 4, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            # nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.conv_blocks2 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf * 4, ngf * 2, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            # nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.conv_blocks3 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf * 2, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+        )
+        self.out = nn.Sequential(
+            nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+            nn.Sigmoid()
+            # Remove Sigmoid activation in the last layer
+        )
+
+        self.lk_relu = nn.LeakyReLU(0.2, inplace=True)
+        self.encoder = Lable_encoder_M(num_class, nz, ngf)
+
+    def forward(self, z,label,label_z):
+        out_eb1, out_eb2, out_eb3 = self.encoder(label, label_z)
+        x = self.l1(z)
+        x = self.conv_blocks(x.view(x.shape[0], -1, self.init_size, self.init_size))#self.conv_blocks
+        # x1 = self.conv_blocks1(x)
+        # x2 = self.conv_blocks2(x1)
+        # x3 = self.conv_blocks3(x2)
+        x1 = self.conv_blocks1(x)
+        n, c, _, _ = x1.shape
+        x1 = self.lk_relu((out_eb1 @ x1.view(n, c, -1)).view(*(x1.shape)))
+
+        x2 = self.conv_blocks2(x1)
+        n, c, _, _ = x2.shape
+        x2 = self.lk_relu((out_eb2 @ x2.view(n, c, -1)).view(*(x2.shape)))
+
+        x3 = self.conv_blocks3(x2)
+        n, c, _, _ = x3.shape
+        x3 = self.lk_relu((out_eb3 @ x3.view(n, c, -1)).view(*(x3.shape)))
+
+        img = self.out(x3)
+        return img, out_eb1, out_eb2, out_eb3
+
+class GeneratorB(nn.Module):
+    """ Generator from DCGAN: https://arxiv.org/abs/1511.06434
+    """
+    def __init__(self, nz=256, ngf=64, nc=3, img_size=64, slope=0.2,num_class=10):
+        super(GeneratorB, self).__init__()
+        if isinstance(img_size, (list, tuple)):
+            self.init_size = ( img_size[0]//16, img_size[1]//16 )
+        else:
+            self.init_size = ( img_size // 16, img_size // 16)
+
+        self.project = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(nz, ngf*8*self.init_size[0]*self.init_size[1]),
+        )
+
+        self.main = nn.Sequential(
+            nn.BatchNorm2d(ngf*8),
+
+            nn.ConvTranspose2d(ngf*8, ngf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*4),
+            nn.LeakyReLU(slope, inplace=True),
+            # 2x
+
+            nn.ConvTranspose2d(ngf*4, ngf*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*2),
+            nn.LeakyReLU(slope, inplace=True),
+            # 4x
+
+            nn.ConvTranspose2d(ngf*2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.LeakyReLU(slope, inplace=True),
+            # 8x
+
+            nn.ConvTranspose2d(ngf, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.LeakyReLU(slope, inplace=True),
+            # 16x
+
+            nn.Conv2d(ngf, nc, 3,1,1),
+            nn.Tanh(),
+        )
+
+        for m in self.modules():
+            if isinstance(m, (nn.ConvTranspose2d, nn.Linear, nn.Conv2d)):
+                nn.init.normal_(m.weight, 0.0, 0.02)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            if isinstance(m, (nn.BatchNorm2d)):
+                nn.init.normal_(m.weight, 1.0, 0.02)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, z):
+        proj = self.project(z)
+        proj = proj.view(proj.shape[0], -1, self.init_size[0], self.init_size[1])
+        output = self.main(proj)
+        return output
+
+class Lable_encoder_large(nn.Module):
+    def __init__(self, label_size, latent_size, ngf):
+        super(Lable_encoder_large, self).__init__()
+        self.eb1_1 = nn.Linear(label_size, ngf * 4)
+        self.bn1_1 = nn.BatchNorm1d(ngf * 4)
+        self.eb1_2 = nn.Linear(ngf * 4, ngf*2)
+        self.bn1_2 = nn.BatchNorm1d(ngf*2)
+        self.eb1_3 = nn.Linear(ngf * 2, ngf)
+        self.bn1_3 = nn.BatchNorm1d(ngf)
+        self.eb1_4 = nn.Linear(ngf, ngf)
+        self.bn1_4 = nn.BatchNorm1d(ngf)
+
+
+        self.eb2_1 = nn.Linear(latent_size, ngf * 4)
+        self.bn2_1 = nn.BatchNorm1d(ngf * 4)
+        self.eb2_2 = nn.Linear(ngf * 4, ngf*2)
+        self.bn2_2 = nn.BatchNorm1d(ngf*2)
+        self.eb2_3 = nn.Linear(ngf * 2, ngf)
+        self.bn2_3 = nn.BatchNorm1d(ngf)
+        self.eb2_4 = nn.Linear(ngf, ngf)
+        self.bn2_4 = nn.BatchNorm1d(ngf)
+
+
+        self.ngf = ngf
+
+    def forward(self, label, lable_z):
+        eb1_1 = self.bn1_1(self.eb1_1(label))
+        eb1_2 = self.bn1_2(self.eb1_2(F.tanh(eb1_1)))
+        eb1_3 = self.bn1_3(self.eb1_3(F.tanh(eb1_2)))
+        eb1_4 = self.bn1_4(self.eb1_4(F.tanh(eb1_3)))
+
+        eb2_1 = self.bn2_1(self.eb2_1(lable_z))
+        eb2_2 = self.bn2_2(self.eb2_2(F.tanh(eb2_1)))
+        eb2_3 = self.bn2_3(self.eb2_3(F.tanh(eb2_2)))
+        eb2_4 = self.bn2_4(self.eb2_4(F.tanh(eb2_3)))
+
+        out_eb1 = eb1_1.unsqueeze(2) * eb2_1.unsqueeze(1)
+        out_eb2 = eb1_2.unsqueeze(2) * eb2_2.unsqueeze(1)
+        out_eb3 = eb1_3.unsqueeze(2) * eb2_3.unsqueeze(1)
+        out_eb4 = eb1_4.unsqueeze(2) * eb2_4.unsqueeze(1)
+
+        return out_eb1, out_eb2, out_eb3, out_eb4
+
+class GeneratorB_with_label(nn.Module):
+    """ Generator from DCGAN: https://arxiv.org/abs/1511.06434
+    """
+    def __init__(self, nz=256, ngf=64, nc=3, img_size=64, slope=0.2,num_class=10):
+        super(GeneratorB_with_label, self).__init__()
+        if isinstance(img_size, (list, tuple)):
+            self.init_size = ( img_size[0]//16, img_size[1]//16 )
+        else:
+            self.init_size = ( img_size // 16, img_size // 16)
+
+        self.project = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(nz, ngf*8*self.init_size[0]*self.init_size[1]),
+        )
+
+        self.conv_blocks1 = nn.Sequential(
+            nn.BatchNorm2d(ngf*8),
+            nn.ConvTranspose2d(ngf*8, ngf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*4)
+        )
+            # nn.LeakyReLU(slope, inplace=True),
+            # 2x
+        self.conv_blocks2 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*4, ngf*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*2),
+        )
+            # nn.LeakyReLU(slope, inplace=True),
+            # 4x
+        self.conv_blocks3 = nn.Sequential(
+            nn.ConvTranspose2d(ngf*2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf)
+        )
+            # nn.LeakyReLU(slope, inplace=True),
+            # 8x
+        self.conv_blocks4 = nn.Sequential(
+            nn.ConvTranspose2d(ngf, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf)
+        )
+            # nn.LeakyReLU(slope, inplace=True),
+            # 16x
+        self.out = nn.Sequential(
+            nn.Conv2d(ngf, nc, 3,1,1),
+            # nn.Tanh(),
+            nn.Sigmoid()
+        )
+        self.lk_relu = nn.LeakyReLU(0.2, inplace=True)
+        self.encoder = Lable_encoder_large(num_class, nz, ngf)
+
+        for m in self.modules():
+            if isinstance(m, (nn.ConvTranspose2d, nn.Linear, nn.Conv2d)):
+                nn.init.normal_(m.weight, 0.0, 0.02)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            if isinstance(m, (nn.BatchNorm2d)):
+                nn.init.normal_(m.weight, 1.0, 0.02)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, z,label,label_z):
+        out_eb1, out_eb2, out_eb3, out_eb4 = self.encoder(label, label_z)
+        proj = self.project(z)
+        x = proj.view(proj.shape[0], -1, self.init_size[0], self.init_size[1])
+        # output = self.main(proj)
+        x1 = self.conv_blocks1(x)
+        n, c, _, _ = x1.shape
+        x1 = self.lk_relu((out_eb1 @ x1.view(n, c, -1)).view(*(x1.shape)))
+
+        x2 = self.conv_blocks2(x1)
+        n, c, _, _ = x2.shape
+        x2 = self.lk_relu((out_eb2 @ x2.view(n, c, -1)).view(*(x2.shape)))
+
+        x3 = self.conv_blocks3(x2)
+        n, c, _, _ = x3.shape
+        x3 = self.lk_relu((out_eb3 @ x3.view(n, c, -1)).view(*(x3.shape)))
+
+        x4 = self.conv_blocks4(x3)
+        n, c, _, _ = x4.shape
+        x4 = self.lk_relu((out_eb4 @ x4.view(n, c, -1)).view(*(x4.shape)))
+
+        output = self.out(x4)
+        return output, out_eb1, out_eb2, out_eb3, out_eb4
+
+class DeepGenerator(nn.Module):
+    def __init__(self, nz=100, ngf=64, img_size=224, nc=3, num_class=10):
+        super(DeepGenerator, self).__init__()
+        self.params = (nz, ngf, img_size, nc)
+        self.init_size = img_size // 16
+        self.l1 = nn.Sequential(nn.Linear(nz, ngf * self.init_size ** 2))
+        self.lk_relu = nn.LeakyReLU(0.2, inplace=True)
+
+        # self.conv_blocks = nn.Sequential(
+        #     nn.BatchNorm2d(ngf),
+        #     nn.Upsample(scale_factor=2),
+        # )
+
+        self.conv_blocks1 = nn.Sequential(
+            nn.Conv2d(ngf, 2*ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(2*ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+            # 14x14
+        )
+        self.conv_blocks2 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(2*ngf, 2*ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(2*ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+            # 28x28
+        )
+        self.conv_blocks3 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(2*ngf, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+            # 56x56
+        )
+        self.conv_blocks4 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+            # 112 x 112
+        )
+        self.conv_blocks5 = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ngf, ngf, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(ngf),
+            # nn.LeakyReLU(0.2, inplace=True),
+            # 224 x 224
+        )
+
+        self.out = nn.Sequential(
+            nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+
+        self.encoder = Lable_encoder_large(num_class, nz, ngf)
+
+    def forward(self, z,label,label_z):
+        out_eb1, out_eb2, out_eb3, out_eb4, out_eb5 = self.encoder(label, label_z)
+        x = self.l1(z)
+        x = x.view(x.shape[0], -1, self.init_size, self.init_size)#self.conv_blocks()
+
+        x1 = self.conv_blocks1(x)
+        n, c, _, _ = x1.shape
+        x1 = self.lk_relu((out_eb1 @ x1.view(n, c, -1)).view(*(x1.shape)))
+
+        x2 = self.conv_blocks2(x1)
+        n, c, _, _ = x2.shape
+        x2 = self.lk_relu((out_eb2 @ x2.view(n, c, -1)).view(*(x2.shape)))
+
+        x3 = self.conv_blocks3(x2)
+        n, c, _, _ = x3.shape
+        x3 = self.lk_relu((out_eb3 @ x3.view(n, c, -1)).view(*(x3.shape)))
+
+        x4 = self.conv_blocks4(x3)
+        n, c, _, _ = x4.shape
+        x4 = self.lk_relu((out_eb4 @ x4.view(n, c, -1)).view(*(x4.shape)))
+
+        x5 = self.conv_blocks5(x4)
+        n, c, _, _ = x5.shape
+        x5 = self.lk_relu((out_eb5 @ x5.view(n, c, -1)).view(*(x5.shape)))
+
+        img = self.out(x5)
+
+        return img, out_eb1, out_eb2, out_eb3, out_eb4, out_eb5
+
+
+# out_eb1, out_eb2 = self.encoder(label, label_z)
+# out = self.l1(z)
+# out = out.view(out.shape[0], -1, self.init_size, self.init_size)
+# x1 = self.conv_blocks1(out)
+#
+# x2 = self.conv_blocks2(x1)
+# n, c, _, _ = x2.shape
+# x2 = self.lk_relu((out_eb1 @ x2.view(n, c, -1)).view(*(x2.shape)))
+#
+# x3 = self.conv_blocks3(x2)
+# n, c, _, _ = x3.shape
+# x3 = self.lk_relu((out_eb2 @ x3.view(n, c, -1)).view(*(x3.shape)))
+#
+# img = self.out(x3)
+
+# class Generator_2(nn.Module):
+#     def __init__(self, nz=100, ngf=64, img_size=32, nc=3):
+#         super(Generator_2, self).__init__()
+#
+#         self.init_size = img_size // 4
+#         self.l1 = nn.Sequential(nn.Linear(nz, ngf * 2 * self.init_size ** 2))
+#
+#         self.conv_blocks = nn.Sequential(
+#             nn.BatchNorm2d(ngf * 2),
+#             nn.Upsample(scale_factor=2),
+#
+#             nn.Conv2d(ngf * 2, ngf * 2, 3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(ngf * 2),
+#             nn.LeakyReLU(0.2, inplace=True),
+#             nn.Upsample(scale_factor=2),
+#
+#             nn.Conv2d(ngf * 2, ngf, 3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(ngf),
+#             nn.LeakyReLU(0.2, inplace=True),
+#
+#             nn.Conv2d(ngf, nc, 3, stride=1, padding=1),
+#             nn.Sigmoid(),
+#         )
+#
+#     def forward(self, z):
+#         out = self.l1(z)
+#         out = out.view(out.shape[0], -1, self.init_size, self.init_size)
+#         img = self.conv_blocks(out)
+#         return img
+
+def UpSampling(x, H, W):
+    B, N, C = x.size()
+    assert N == H * W
+    x = x.permute(0, 2, 1)
+    x = x.view(-1, C, H, W)
+    x = nn.PixelShuffle(2)(x)
+    B, C, H, W = x.size()
+    x = x.view(-1, C, H * W)
+    x = x.permute(0, 2, 1)
+    return x, H, W
+
+class MLP(nn.Module):
+    def __init__(self, in_feat, hid_feat=None, out_feat=None,
+                 dropout=0.):
+        super().__init__()
+        if not hid_feat:
+            hid_feat = in_feat
+        if not out_feat:
+            out_feat = in_feat
+        self.fc1 = nn.Linear(in_feat, hid_feat)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(hid_feat, out_feat)
+        self.droprateout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.fc2(x)
+        return self.droprateout(x)
+
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads=4, attention_dropout=0., proj_dropout=0.):
+        super().__init__()
+        self.heads = heads
+        self.scale = 1./dim**0.5
+
+        self.qkv = nn.Linear(dim, dim*3, bias=False)
+        self.attention_dropout = nn.Dropout(attention_dropout)
+        self.out = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.Dropout(proj_dropout)
+        )
+
+    def forward(self, x):
+        b, n, c = x.shape
+        qkv = self.qkv(x).reshape(b, n, 3, self.heads, c//self.heads)
+        q, k, v = qkv.permute(2, 0, 3, 1, 4)      # [b, head_num, n,  c//self.heads]
+
+        dot = (q @ k.transpose(-2, -1)) * self.scale
+        attn = dot.softmax(dim=-1)    # [b, head_num]
+        attn = self.attention_dropout(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(b, n, c)  # [b, head_num, n,  c//self.heads] --> [b, n, head_num, c//self.heads]
+        x = self.out(x)
+        return x
+
+class Encoder_Block(nn.Module):
+    def __init__(self, dim, heads, mlp_ratio=4, drop_rate=0.):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(dim)
+        self.attn = Attention(dim, heads, drop_rate, drop_rate)
+        self.ln2 = nn.LayerNorm(dim)
+        self.mlp = MLP(dim, dim * mlp_ratio, dropout=drop_rate)
+
+    def forward(self, x):
+        x1 = self.ln1(x)
+        x = x + self.attn(x1)
+        x2 = self.ln2(x)
+        x = x + self.mlp(x2)
+        return x
+
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, depth, dim, heads, mlp_ratio=4, drop_rate=0.):
+        super().__init__()
+        self.Encoder_Blocks = nn.ModuleList([
+            Encoder_Block(dim, heads, mlp_ratio, drop_rate)
+            for i in range(depth)])
+
+    def forward(self, x):
+        for Encoder_Block in self.Encoder_Blocks:
+            x = Encoder_Block(x)
+        return x
+
+
+class Generator_3(nn.Module):
+    """docstring for Generator"""
+
+    def __init__(self, depth1=5, depth2=4, depth3=2, initial_size=8, dim=384, heads=4, mlp_ratio=4,
+                 drop_rate=0.):
+        super(Generator_3, self).__init__()
+
+
+        self.initial_size = initial_size
+        self.dim = dim
+        self.depth1 = depth1
+        self.depth2 = depth2
+        self.depth3 = depth3
+        self.heads = heads
+        self.mlp_ratio = mlp_ratio
+        self.droprate_rate = drop_rate
+
+        self.mlp = nn.Linear(1024, (self.initial_size ** 2) * self.dim)
+
+        self.positional_embedding_1 = nn.Parameter(torch.zeros(1, (8 ** 2), 384))
+        self.positional_embedding_2 = nn.Parameter(torch.zeros(1, (8 * 2) ** 2, 384 // 4))
+        self.positional_embedding_3 = nn.Parameter(torch.zeros(1, (8 * 4) ** 2, 384 // 16))
+
+        self.TransformerEncoder_encoder1 = TransformerEncoder(depth=self.depth1, dim=self.dim, heads=self.heads,
+                                                              mlp_ratio=self.mlp_ratio, drop_rate=self.droprate_rate)
+        self.TransformerEncoder_encoder2 = TransformerEncoder(depth=self.depth2, dim=self.dim // 4, heads=self.heads,
+                                                              mlp_ratio=self.mlp_ratio, drop_rate=self.droprate_rate)
+        self.TransformerEncoder_encoder3 = TransformerEncoder(depth=self.depth3, dim=self.dim // 16, heads=self.heads,
+                                                              mlp_ratio=self.mlp_ratio, drop_rate=self.droprate_rate)
+
+        self.linear = nn.Sequential(nn.Conv2d(self.dim // 16, 3, 1, 1, 0))
+
+    def forward(self, noise):
+        x = self.mlp(noise).view(-1, self.initial_size ** 2, self.dim)
+
+        x = x + self.positional_embedding_1
+        H, W = self.initial_size, self.initial_size
+        x = self.TransformerEncoder_encoder1(x)
+
+        x, H, W = UpSampling(x, H, W)
+        x = x + self.positional_embedding_2
+        x = self.TransformerEncoder_encoder2(x)
+
+        x, H, W = UpSampling(x, H, W)
+        x = x + self.positional_embedding_3
+
+        x = self.TransformerEncoder_encoder3(x)
+        x = self.linear(x.permute(0, 2, 1).view(-1, self.dim // 16, H, W))
+
+        return x
+
+class Auxiliary_Network(nn.Module):
+    def __init__(self,in_size, num_class):
+        super(Auxiliary_Network, self).__init__()
+        self.output = nn.Sequential(
+            nn.Linear(in_size,784),
+            nn.BatchNorm1d(784),
+            nn.ReLU(),
+            nn.Linear(784, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Linear(256, num_class)
+        )
+    def forward(self, x):
+        x = F.adaptive_avg_pool2d(x, (1, 1))
+        x = x.view(x.size(0), -1)
+        return self.output(x)
+
+
+class CNNCifar10(nn.Module):
+    def __init__(self):
+        super(CNNCifar10, self).__init__()
+        self.conv1 = nn.Conv2d(3, 256, 3)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(256, 256, 3)
+        self.conv3 = nn.Conv2d(256, 128, 3)
+        self.fc1 = nn.Linear(128 * 4 * 4, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x_f1 = F.relu(self.conv3(x))
+        x_o = x_f1.view(-1, 128 * 4 * 4)
+        x_o = self.fc1(x_o)
+        return x_o
+
+
+class Discriminator(nn.Module):
+    def __init__(self, input_dim=3, output_dim=1):
+        '''
+        初始化判别网络
+        :param input_dim:输入通道数
+        :param output_dim:输出通道数
+        '''
+        super(Discriminator, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        n_d_feature=32
+        self.conv = nn.Sequential(
+    nn.Conv2d(input_dim, n_d_feature, kernel_size=4, stride=2, padding=1),
+    nn.LeakyReLU(0.2),
+
+    nn.Conv2d(n_d_feature, 2 * n_d_feature, kernel_size=4, stride=2, padding=1, bias=False),
+    nn.BatchNorm2d(2 * n_d_feature),
+    nn.LeakyReLU(0.2),
+
+    nn.Conv2d(2 * n_d_feature, 4 * n_d_feature, kernel_size=4, stride=2, padding=1, bias=False),
+    nn.BatchNorm2d(4 * n_d_feature),
+    nn.LeakyReLU(0.2),
+
+    nn.Conv2d(4 * n_d_feature, 1, kernel_size=4)
+)
+        # self.fc = nn.Sequential(
+        #     nn.Linear(128 * 7 * 7, 1024),
+        #     nn.BatchNorm1d(1024),
+        #     nn.LeakyReLU(0.2),
+        #     nn.Linear(1024, self.output_dim),
+        #     # nn.Sigmoid(),
+        # )
+
+    def forward(self, input):
+        x = self.conv(input)
+        # x = x.view(-1, 128 * 7 * 7)
+        # x = self.fc(x)
+        return x.view(-1)
+
+class CNNCifar10_with_aux(nn.Module):
+    def __init__(self):
+        super(CNNCifar10_with_aux, self).__init__()
+        self.conv1 = nn.Conv2d(3, 256, 3)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(256, 256, 3)
+        self.conv3 = nn.Conv2d(256, 128, 3)
+        self.fc1 = nn.Linear(128 * 4 * 4, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x_f1 = F.relu(self.conv3(x))
+        x_o = x_f1.view(-1, 128 * 4 * 4)
+        x_o = self.fc1(x_o)
+        return x_o, x_f1
+
+import torch
+import torch.nn as nn
+
+class AlexNet(nn.Module):
+    def __init__(self, in_channel=1,num_classes=10):
+        super(AlexNet, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channel, 64, kernel_size=11, stride=4, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(64, 192, kernel_size=5, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+        )
+        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(256 * 6 * 6, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, num_classes),
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), 256 * 6 * 6)
+        x = self.classifier(x)
+        return x
+
+class AlexNet_Cifar(nn.Module):
+    def __init__(self, in_channel=1,num_classes=10):
+        super(AlexNet_Cifar, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels=in_channel, out_channels=64, kernel_size=5, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=192, kernel_size=2, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=192, out_channels=384, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+        )
+        # self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(256 * 6 * 6, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, num_classes),
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        # x = self.avgpool(x)
+        x = x.view(x.size(0), 256 * 6 * 6)
+        x = self.classifier(x)
+        return x
+
+
+
+class Net_m(nn.Module):
+    def __init__(self):
+        self.number = 0
+        super(Net_m, self).__init__()
+        self.conv1 = nn.Conv2d(1, 20, 5, 1)
+        self.conv2 = nn.Conv2d(20, 50, 5, 1)
+        self.conv3 = nn.Conv2d(50, 50, 3, 1, 1)
+        self.fc1 = nn.Linear(2*2*50, 500)
+        self.fc2 = nn.Linear(500, 10)
+
+    def forward(self, x, sign=0):
+        if sign == 0:
+            self.number += 1
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2, 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2, 2)
+        x = F.relu(self.conv3(x))
+        x = F.max_pool2d(x, 2, 2)
+        x = x.view(-1, 2*2*50)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x#F.log_softmax(x, dim=1)
+
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=5, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=5, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2))
+        self.fc = nn.Linear(7 * 7 * 32, 10)
+
+    def forward(self, x):
+        out = self.layer1(x)
+        out = self.layer2(out)
+        out = out.view(out.size(0), -1)
+        out = self.fc(out)
+        return out
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=10,in_channel=3):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(in_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.linear = nn.Linear(512 * block.expansion, num_classes)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x, return_features=False):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        out = F.relu(x)
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = F.adaptive_avg_pool2d(out, (1, 1))
+        feature = out.view(out.size(0), -1)
+        out = self.linear(feature)
+
+        if return_features:
+            return out, feature
+        else:
+            return out
+
+
+def resnet18(num_classes=10,in_channel=3):
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes,in_channel)
+
+
+def resnet34(num_classes=10,in_channel=3):
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes,in_channel)
+
+
+def resnet50(num_classes=10):
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes)
+
+
+def resnet101(num_classes=10):
+    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes)
+
+
+def resnet152(num_classes=10):
+    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes)
+
+import math
+
+class VGG(nn.Module):
+
+    def __init__(self, features, num_classes=1000):
+        super(VGG, self).__init__()
+        self.features = features
+        self.classifier = nn.Sequential(
+            nn.Linear(512 * 1 * 1, 4096),   #32x32 1,1
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, num_classes),
+        )
+        self._initialize_weights()
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                n = m.weight.size(1)
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
+
+
+def make_layers(cfg, batch_norm=False):
+    layers = []
+    in_channels = 3
+    for v in cfg:
+        if v == 'M':
+            layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+        else:
+            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
+            if batch_norm:
+                layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+            else:
+                layers += [conv2d, nn.ReLU(inplace=True)]
+            in_channels = v
+    return nn.Sequential(*layers)
+
+cfg = {
+    'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'B': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
+}
+
+def vgg16(num_classes=10):
+    """VGG 16-layer model (configuration "D")"""
+    model = VGG(make_layers(cfg['D']), num_classes)
+    return model
+
+def vgg19(num_classes=10):
+    """VGG 16-layer model (configuration "D")"""
+    model = VGG(make_layers(cfg['E']), num_classes)
+    return model
+
+if __name__ == '__main__':
+    model = vgg19(10)
+    x= torch.rand(3,3,32,32)
+    model(x)
