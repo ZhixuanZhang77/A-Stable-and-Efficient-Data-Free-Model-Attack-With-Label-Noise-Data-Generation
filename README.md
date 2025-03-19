@@ -11,6 +11,5 @@ we have shared some key codes about this work. Welcome to compare and cite our w
   volume={},
   number={},
   pages={1-1},
-  keywords={Training;Closed box;Generators;Data models;Data collection;Adaptation models;Diversity methods;Cloning;Glass box;Computational modeling;deep neural network;data-free;adversarial examples;black-box attack},
   doi={10.1109/TIFS.2025.3550066}}
 
