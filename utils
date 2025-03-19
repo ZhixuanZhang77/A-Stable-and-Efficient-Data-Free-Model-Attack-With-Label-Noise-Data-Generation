@@ -519,7 +519,7 @@ def _collect_all_images(root, postfix=['png', 'jpg', 'jpeg', 'JPEG']):
     for dirpath, dirnames, files in os.walk(root):  # '/dockerdata/cvpr/10-28/ft_local/run/svhn_4',[],files(all imgs)
         files.sort()
         files = files[-256 * 400:]
-        # files = files[-2048 * 400:] ,which is used in tiny-imagenet, same in Ref [29] [39].
+        # files = files[-2048 * 400:]
         for pos in postfix:
             for f in files:
                 if f.endswith(pos):
