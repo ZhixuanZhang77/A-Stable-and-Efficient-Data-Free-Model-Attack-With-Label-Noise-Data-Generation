@@ -8,9 +8,7 @@
   year={2025},
   volume={20},
   number={},
-  pages={3131-3145},
-  keywords={Training;Closed box;Generators;Data models;Data collection;Adaptation models;Diversity methods;Cloning;Glass box;Computational modeling;Deep neural network;data-free;adversarial examples;closed-box attack},
-  doi={10.1109/TIFS.2025.3550066}}
+  pages={3131-3145}}
 
 We have shared some key codes about this work. 
 Welcome to compare and cite our work. Thanks!
